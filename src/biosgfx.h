@@ -51,6 +51,11 @@ void mindset_init(void);
 void mindset_mode(unsigned char mode);
 
 /**
+ * Set font
+ */
+void mindset_set_font(void);
+
+/**
  * Set pixel transfer mode
  */
 void mindset_set_transfer_mode(unsigned char transparent, unsigned char mode);

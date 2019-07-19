@@ -17,6 +17,7 @@ extern padBool FastText; /* protocol.c */
 padPt TTYLoc;
 uint8_t FONT_SIZE_X;
 uint8_t FONT_SIZE_Y;
+
 uint16_t* scalex;
 uint16_t* scaley;
 uint8_t* font;
@@ -39,12 +40,12 @@ void screen_init(void)
   FONT_SIZE_X=5;
   FONT_SIZE_Y=6;
   font=&font_320x200;
+  fontptr=&fontptr_6;
   scalex=&scalex_320;
   scaley=&scaley_200;
-  fontptr=&fontptr_6;
   mindset_init();
   mindset_mode(screen_mode);
-}
+} 
 
 /**
  * screen_beep(void) - Beep the terminal
@@ -111,7 +112,186 @@ void screen_line_draw(padPt* Coord1, padPt* Coord2)
  */
 void screen_char_draw(padPt* Coord, unsigned char* ch, unsigned char count)
 {
-  mindset_text(scalex[Coord->x],scaley[Coord->y],ch,count);
+  short offset; /* due to negative offsets */
+  unsigned short x;      /* Current X and Y coordinates */
+  unsigned short y;
+  unsigned short* px;   /* Pointers to X and Y coordinates used for actual plotting */
+  unsigned short* py;
+  unsigned char i; /* current character counter */
+  unsigned char a; /* current character byte */
+  unsigned char j,k; /* loop counters */
+  char b; /* current character row bit signed */
+  unsigned char width=FONT_SIZE_X;
+  unsigned char height=FONT_SIZE_Y;
+  unsigned short deltaX=1;
+  unsigned short deltaY=1;
+  unsigned char mainColor=WHITE;
+  unsigned char altColor=BLACK;
+  unsigned char *p;
+  unsigned char* curfont;
+  
+  switch(CurMem)
+    {
+    case M0:
+      curfont=font;
+      offset=-32;
+      break;
+    case M1:
+      curfont=font;
+      offset=64;
+      break;
+    case M2:
+      curfont=fontm23;
+      offset=-32;
+      break;
+    case M3:
+      curfont=fontm23;
+      offset=32;      
+      break;
+    }
+
+  if (CurMode==ModeRewrite)
+    {
+      altColor=current_background;
+    }
+  else if (CurMode==ModeInverse)
+    {
+      altColor=current_foreground;
+    }
+  
+  if (CurMode==ModeErase || CurMode==ModeInverse)
+    mainColor=current_background;
+  else
+    mainColor=current_foreground;
+
+  current_foreground=mainColor;
+  
+  x=scalex[(Coord->x&0x1FF)];
+  y=scaley[(Coord->y)+14&0x1FF];
+  
+  if (FastText==padF)
+    {
+      goto chardraw_with_fries;
+    }
+
+  /* the diet chardraw routine - fast text output. */
+  
+  for (i=0;i<count;++i)
+    {
+      a=*ch;
+      ++ch;
+      a+=offset;
+      p=&curfont[fontptr[a]];
+      
+      for (j=0;j<FONT_SIZE_Y;++j)
+  	{
+  	  b=*p;
+	  
+  	  for (k=0;k<FONT_SIZE_X;++k)
+  	    {
+  	      if (b&0x80) /* check sign bit. */
+		{
+		  mindset_dot(x,y,mainColor);
+		}
+
+	      ++x;
+  	      b<<=1;
+  	    }
+
+	  ++y;
+	  x-=width;
+	  ++p;
+  	}
+
+      x+=width;
+      y-=height;
+    }
+
+  return;
+
+ chardraw_with_fries:
+  if (Rotate)
+    {
+      deltaX=-abs(deltaX);
+      width=-abs(width);
+      px=&y;
+      py=&x;
+    }
+    else
+    {
+      px=&x;
+      py=&y;
+    }
+  
+  if (ModeBold)
+    {
+      deltaX = deltaY = 2;
+      width<<=1;
+      height<<=1;
+    }
+  
+  for (i=0;i<count;++i)
+    {
+      a=*ch;
+      ++ch;
+      a+=offset;
+      p=&curfont[fontptr[a]];
+      for (j=0;j<FONT_SIZE_Y;++j)
+  	{
+  	  b=*p;
+
+	  if (Rotate)
+	    {
+	      px=&y;
+	      py=&x;
+	    }
+	  else
+	    {
+	      px=&x;
+	      py=&y;
+	    }
+
+  	  for (k=0;k<FONT_SIZE_X;++k)
+  	    {
+  	      if (b&0x80) /* check sign bit. */
+		{
+		  if (ModeBold)
+		    {
+		      mindset_dot(*px+1,*py,mainColor);
+		      mindset_dot(*px,*py+1,mainColor);
+		      mindset_dot(*px+1,*py+1,mainColor);
+		    }
+		  mindset_dot(*px,*py,mainColor);
+		}
+	      else
+		{
+		  if (CurMode==ModeInverse || CurMode==ModeRewrite)
+		    {
+		      if (ModeBold)
+			{
+			  mindset_dot(*px+1,*py,altColor);
+			  mindset_dot(*px,*py+1,altColor);
+			  mindset_dot(*px+1,*py+1,altColor);
+			}
+		      mindset_dot(*px,*py,altColor); 
+		    }
+		}
+
+	      x += deltaX;
+  	      b<<=1;
+  	    }
+
+	  y+=deltaY;
+	  x-=width;
+	  ++p;
+  	}
+
+      Coord->x+=width;
+      x+=width;
+      y-=height;
+    }
+
+  return;
 }
 
 /**

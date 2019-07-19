@@ -8,6 +8,9 @@ unsigned short* dot;
 unsigned short* line;
 unsigned short* bar;
 unsigned short* text;
+/* unsigned short* font; */
+
+static const char* hello="Hello";
 
 /**
  * Mindset init
@@ -18,6 +21,7 @@ void mindset_init(void)
   line=malloc(4);
   bar=malloc(10);
   text=malloc(10);
+  /* font=malloc(14); */
 }
 
 /**
@@ -39,6 +43,26 @@ void mindset_mode(unsigned char mode)
   regs.h.ah=0x00;
   regs.h.al=mode;
   int86(INT_VIDEO,&regs,&regs);
+}
+
+/**
+ * Set font
+ */
+void mindset_set_font(void)
+{
+  /* union REGS regs; */
+
+  /* font[0]=0x0000;    // Fixed font, no excess space. */
+  /* font[1]=0x0005;    // 5 pixels wide */
+  /* font[2]=0x0006;    // 6 pixels high */
+  /* font[3]=0x0002;    // one word per bitmap. */
+  /* font[4]=FP_SEG(&fontdata[0]);  // Font address segment */
+  /* font[5]=FP_OFF(&fontdata[0]);  // Font address offset */
+  /* font[6]=0x20AA;    // first and last ASCII value */
+  
+  /* regs.h.ah=0x1F; // Set font pointer */
+  /* regs.w.bx=FP_OFF(&font[0]); */
+  /* int86(INT_VIDEO,&regs,&regs); */
 }
 
 /**
@@ -147,27 +171,27 @@ void mindset_bar(unsigned short x1, unsigned short y1, unsigned short x2, unsign
 /**
  * Mindset text output
  */
-void mindset_text(short x, short y, char* ch, unsigned short count)
-{
-  union REGS regs;
+/* void mindset_text(short x, short y, char* ch, unsigned short count) */
+/* { */
+/*   union REGS regs; */
 
-  text[0]=x;
-  text[1]=y;
-  text[2]=count;
-  text[3]=FP_SEG(&ch);
-  text[4]=FP_OFF(&ch);
+/*   text[0]=x; */
+/*   text[1]=y; */
+/*   text[2]=5; */
+/*   text[3]=FP_OFF(&hello); */
+/*   text[4]=FP_SEG(&hello); */
   
-  regs.h.ah=0x21; // BLT string
-  regs.h.al=0x00; // BLT id (not really used.)
-  regs.h.ch=1;    // One char string
-  regs.h.cl=0;    // Do not ignore any chars at beginning of string
-  regs.h.dh=0;    // Left to right, for now.
-  regs.h.dl=WHITE;    // Color
-  regs.w.si=0;    // X origin
-  regs.w.di=0;    // Y origin
-  regs.w.bx=FP_OFF(&text[0]); // Text Parameter block
-  int86(INT_VIDEO,&regs,&regs);
-}
+/*   regs.h.ah=0x21; // BLT string */
+/*   regs.h.al=0x00; // BLT id (not really used.) */
+/*   regs.h.ch=1;    // One char string */
+/*   regs.h.cl=0;    // Do not ignore any chars at beginning of string */
+/*   regs.h.dh=0;    // Left to right, for now. */
+/*   regs.h.dl=WHITE;    // Color */
+/*   regs.w.si=0;    // X origin */
+/*   regs.w.di=0;    // Y origin */
+/*   regs.w.bx=FP_OFF(&text[0]); // Text Parameter block */
+/*   int86(INT_VIDEO,&regs,&regs); */
+/* } */
 
 /**
  * Mindset clear screen

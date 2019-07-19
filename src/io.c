@@ -23,7 +23,7 @@ void io_init(void)
   log("io_init() - About to set line characteristics.\r\n");
   // Set line characteristics. 
   regs.h.al = 0x07; // 1200bps
-  regs.h.al = (regs.h.al < 5) | 0x03;   /* 8/N/1 */
+  regs.h.al = (regs.h.al << 5) | 0x03;   /* 8/N/1 */
   regs.x.dx = PORT;
   regs.h.ah = 0x00;
   int86(SERIAL,&regs,&regs);
