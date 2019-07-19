@@ -62,7 +62,7 @@ void keyboard_main(void)
 	  if (ch==0x2d) // alt-x
 	    {
 	      io_done();
-	      mode(0x03);
+	      /* mode(0x03); */
 	      exit(0);
 	    }
 	  /* else if (ch==0x23) // alt-h */

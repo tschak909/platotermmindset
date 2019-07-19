@@ -258,37 +258,6 @@ void terminal_ext_out(padByte value)
  */
 void terminal_char_load(padWord charnum, charData theChar)
 {
-#ifdef OLIVETTI
-  memset(char_data,0,sizeof(char_data));
-  
-  // load and transpose character data into 8x16 array  
-  for (curr_word=0;curr_word<8;curr_word++)
-    {
-      for (u=16; u-->0; )
-	{
-	  if (theChar[curr_word] & 1<<u)
-	    {
-	      char_data[u^0x0F&0x0F]|=BTAB[curr_word];
-	    }
-	}
-    }
-
-  // OR pixel rows together
-  fontm23[(charnum*12)+0]=char_data[0]<<8;
-  fontm23[(charnum*12)+1]=char_data[1]<<8;
-  fontm23[(charnum*12)+2]=char_data[2]|char_data[3]<<8;
-  fontm23[(charnum*12)+3]=char_data[4]<<8;
-  fontm23[(charnum*12)+4]=char_data[5]<<8;
-  fontm23[(charnum*12)+5]=char_data[6]|char_data[7]<<8;
-  fontm23[(charnum*12)+6]=char_data[8]<<8;
-  fontm23[(charnum*12)+7]=char_data[9]<<8;
-  fontm23[(charnum*12)+8]=char_data[10]|char_data[11]<<8;
-  fontm23[(charnum*12)+9]=char_data[12]<<8;
-  fontm23[(charnum*12)+10]=char_data[13]<<8;
-  fontm23[(charnum*12)+11]=char_data[14]|char_data[15]<<8;
-#endif
-
-#ifdef PCJR
   // Clear char data.
   memset(char_data,0,sizeof(char_data));
   memset(PIX_WEIGHTS,0,sizeof(PIX_WEIGHTS));
@@ -337,7 +306,6 @@ void terminal_char_load(padWord charnum, charData theChar)
   	    }
   	}
     }
-#endif  
 }
 
 /**

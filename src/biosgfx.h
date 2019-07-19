@@ -31,6 +31,11 @@
 #define PIXEL_MODE_XOR_NOT         7
 
 /**
+ * Mindset init
+ */
+void mindset_init(void);
+
+/**
  * Set video mode
  * 
  * unsigned char m - video mode
@@ -62,6 +67,17 @@ void mindset_set_transfer_mode(unsigned char transparent, unsigned char mode);
 void mindset_line(unsigned short x1, unsigned short y1, unsigned short x2, unsigned short y2, unsigned char c);
 
 /**
+ * Draw dot
+ *
+ * short x1 - initial X position
+ * short y1 - initial Y position
+ * short x2 - final X position
+ * short y2 - final Y position
+ * unsigned char c - color
+ */
+void mindset_dot(unsigned short x, unsigned short y, unsigned char c);
+
+/**
  * Draw bar (with a bunch of lines)
  *
  * short x1 - initial left corner of box
@@ -71,5 +87,15 @@ void mindset_line(unsigned short x1, unsigned short y1, unsigned short x2, unsig
  * unsigned char c - Color
  */
 void mindset_bar(unsigned short x1, unsigned short y1, unsigned short x2, unsigned short y2, unsigned char c);
+
+/**
+ * Mindset text output
+ */
+void mindset_text(short x, short y, char* ch, unsigned short count);
+
+/**
+ * Mindset clear screen
+ */
+void mindset_clear_screen(void);
 
 #endif /* BIOSGFX_H */
