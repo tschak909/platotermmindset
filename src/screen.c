@@ -1,6 +1,5 @@
 #include "screen.h"
 #include "protocol.h"
-#include "biosgfx.h"
 #include "font.h"
 #include "scale.h"
 #include <stdlib.h>
@@ -9,6 +8,28 @@
 #include <stdbool.h>
 #include <string.h>
 #include <i86.h>
+#include "../mindset-c/libmindset_gfx/libmindset_gfx.h"
+
+/* Quickly get a solid fill pattern for a color */
+const unsigned short color_to_solid_fill_pattern[]=
+  {
+   0x0000,
+   0x1111,
+   0x2222,
+   0x3333,
+   0x4444,
+   0x5555,
+   0x6666,
+   0x7777,
+   0x8888,
+   0x9999,
+   0xAAAA,
+   0xBBBB,
+   0xCCCC,
+   0xDDDD,
+   0xEEEE,
+   0xFFFF
+  };
 
 unsigned char CharWide=8;
 unsigned char CharHigh=16;
@@ -24,27 +45,54 @@ uint8_t* font;
 uint16_t* fontptr;
 uint16_t width;
 uint16_t height;
-unsigned char current_foreground=WHITE;
-unsigned char current_background=BLACK;
+unsigned char current_foreground=0;
+unsigned char current_background=1;
+padRGB current_background_rgb={0,0,0};
+padRGB current_foreground_rgb={255,255,255};
 unsigned char fontm23[768];
 unsigned char is_mono=0;
+unsigned char highest_color_index;
+unsigned short palette[16];
 
 /**
  * screen_init() - Set up the screen
  */
 void screen_init(void)
 {
-  screen_mode=2;
-  width=320;
-  height=200;
-  FONT_SIZE_X=5;
-  FONT_SIZE_Y=6;
-  font=&font_320x200;
-  fontptr=&fontptr_6;
-  scalex=&scalex_320;
-  scaley=&scaley_200;
-  mindset_init();
-  mindset_mode(screen_mode);
+  switch (screen_mode)
+    {
+    case 2:
+      width=320;
+      height=200;
+      FONT_SIZE_X=5;
+      FONT_SIZE_Y=6;
+      font=&font_320x200;
+      fontptr=&fontptr_6;
+      scalex=&scalex_320;
+      scaley=&scaley_200;
+      break;
+    case 4:
+      width=640;
+      height=200;
+      FONT_SIZE_X=8;
+      FONT_SIZE_Y=6;
+      font=&font_640x200;
+      fontptr=&fontptr_6;
+      scalex=&scalex_640;
+      scaley=&scaley_200;
+      break;
+    case 6:
+      width=640;
+      height=400;
+      FONT_SIZE_X=8;
+      FONT_SIZE_Y=12;
+      font=&font_640x400;
+      fontptr=&fontptr_12;
+      scalex=&scalex_640;
+      scaley=&scaley_400;      
+      break;
+    }
+  mindset_gfx_set_mode(screen_mode);
 } 
 
 /**
@@ -55,11 +103,32 @@ void screen_beep(void)
 }
 
 /**
+ * screen_pen_mode() - Set pen mode
+ */
+void screen_pen_mode(void)
+{
+  if (CurMode==ModeErase || CurMode==ModeInverse)
+    current_foreground=current_background;
+  else
+    current_foreground=current_foreground;
+}
+
+/**
+ * Update palette
+ */
+void screen_update_palette(void)
+{
+  mindset_gfx_set_palette(0,16,0,&palette);
+}
+
+/**
  * screen_clear - Clear the screen
  */
 void screen_clear(void)
 {
-  mindset_clear_screen();
+  highest_color_index=1;
+  mindset_gfx_fill_dest_buffer(color_to_solid_fill_pattern[current_background]);
+  screen_update_palette();
 }
 
 /**
@@ -74,13 +143,17 @@ void screen_wait(void)
  */
 void screen_block_draw(padPt* Coord1, padPt* Coord2)
 {
-  // initial naive implementation, draw a bunch of horizontal lines the size of bounding box.
-  if (CurMode==ModeErase || CurMode==ModeInverse)
-    current_foreground=current_background;
-  else
-    current_foreground=current_foreground;
+  CopyWordParams params;
+  
+  screen_pen_mode();
 
-  mindset_bar(scalex[Coord1->x],scaley[Coord1->y],scalex[Coord2->x],scaley[Coord2->y],current_foreground);
+  params.pattern=color_to_solid_fill_pattern[current_foreground];
+  params.x=scalex[Coord1->x];
+  params.y=scaley[Coord1->y];
+  params.width=scalex[(Coord2->x)-(Coord1->x)];
+  params.height=scaley[(Coord2->y)-(Coord1->y)];
+
+  mindset_gfx_blt_copy_word(0,1,0,0,&params);
 }
 
 /**
@@ -88,11 +161,12 @@ void screen_block_draw(padPt* Coord1, padPt* Coord2)
  */
 void screen_dot_draw(padPt* Coord)
 {
-  if (CurMode==ModeErase || CurMode==ModeInverse)
-    current_foreground=current_background;
-  else
-    current_foreground=current_foreground;
-  mindset_dot(scalex[Coord->x],scaley[Coord->y],current_foreground);
+  PolyPointParams params;
+
+  params.x=scalex[Coord->x];
+  params.y=scaley[Coord->y];
+
+  mindset_gfx_blt_polypoint(0,0,current_foreground,0,0,&params);
 }
 
 /**
@@ -100,11 +174,14 @@ void screen_dot_draw(padPt* Coord)
  */
 void screen_line_draw(padPt* Coord1, padPt* Coord2)
 {
-  if (CurMode==ModeErase || CurMode==ModeInverse)
-    current_foreground=current_background;
-  else
-    current_foreground=current_foreground;
-  mindset_line(scalex[Coord1->x],scaley[Coord1->y],scalex[Coord2->x],scaley[Coord2->y],current_foreground);
+  PolyLineParams params[2];
+
+  params[0].x=scalex[Coord1->x];
+  params[0].y=scaley[Coord1->y];
+  params[1].x=scalex[Coord2->x];
+  params[1].y=scaley[Coord2->y];
+
+  mindset_gfx_blt_polyline(0,2,current_foreground,1,0,0,&params);
 }
 
 /**
@@ -112,6 +189,10 @@ void screen_line_draw(padPt* Coord1, padPt* Coord2)
  */
 void screen_char_draw(padPt* Coord, unsigned char* ch, unsigned char count)
 {
+  PolyPointParams pp_mainColor[192]; // max size of 8x12 font for 96 total points to blit max. x2 for bold.
+  unsigned char ppc_mainColor=0; // polypoint counter for above.
+  PolyPointParams pp_altColor[192];
+  unsigned char ppc_altColor=0;
   short offset; /* due to negative offsets */
   unsigned short x;      /* Current X and Y coordinates */
   unsigned short y;
@@ -125,8 +206,8 @@ void screen_char_draw(padPt* Coord, unsigned char* ch, unsigned char count)
   unsigned char height=FONT_SIZE_Y;
   unsigned short deltaX=1;
   unsigned short deltaY=1;
-  unsigned char mainColor=WHITE;
-  unsigned char altColor=BLACK;
+  unsigned char mainColor=current_foreground;
+  unsigned char altColor=current_background;
   unsigned char *p;
   unsigned char* curfont;
   
@@ -191,9 +272,10 @@ void screen_char_draw(padPt* Coord, unsigned char* ch, unsigned char count)
   	    {
   	      if (b&0x80) /* check sign bit. */
 		{
-		  mindset_dot(x,y,mainColor);
+		  pp_mainColor[ppc_mainColor].x=x;
+		  pp_mainColor[ppc_mainColor].y=y;
+		  ppc_mainColor++;
 		}
-
 	      ++x;
   	      b<<=1;
   	    }
@@ -203,8 +285,10 @@ void screen_char_draw(padPt* Coord, unsigned char* ch, unsigned char count)
 	  ++p;
   	}
 
+      mindset_gfx_blt_polypoint(0,ppc_mainColor,mainColor,0,0,&pp_mainColor);
       x+=width;
       y-=height;
+      ppc_mainColor=0;
     }
 
   return;
@@ -257,11 +341,19 @@ void screen_char_draw(padPt* Coord, unsigned char* ch, unsigned char count)
 		{
 		  if (ModeBold)
 		    {
-		      mindset_dot(*px+1,*py,mainColor);
-		      mindset_dot(*px,*py+1,mainColor);
-		      mindset_dot(*px+1,*py+1,mainColor);
+		      pp_mainColor[ppc_mainColor].x=*px+1;
+		      pp_mainColor[ppc_mainColor].y=*py;
+		      ppc_mainColor++;
+		      pp_mainColor[ppc_mainColor].x=*px;
+		      pp_mainColor[ppc_mainColor].y=*py+1;
+		      ppc_mainColor++;
+		      pp_mainColor[ppc_mainColor].x=*px+1;
+		      pp_mainColor[ppc_mainColor].y=*py+1;
+		      ppc_mainColor++;
 		    }
-		  mindset_dot(*px,*py,mainColor);
+		  pp_mainColor[ppc_mainColor].x=*px;
+		  pp_mainColor[ppc_mainColor].y=*py;
+		  ppc_mainColor++;
 		}
 	      else
 		{
@@ -269,11 +361,18 @@ void screen_char_draw(padPt* Coord, unsigned char* ch, unsigned char count)
 		    {
 		      if (ModeBold)
 			{
-			  mindset_dot(*px+1,*py,altColor);
-			  mindset_dot(*px,*py+1,altColor);
-			  mindset_dot(*px+1,*py+1,altColor);
+			  pp_altColor[ppc_altColor].x=*px+1;
+			  pp_altColor[ppc_altColor].y=*py;
+			  ppc_altColor++;
+			  pp_altColor[ppc_altColor].x=*px;
+			  pp_altColor[ppc_altColor].y=*py+1;
+			  ppc_altColor++;
+			  pp_altColor[ppc_altColor].x=*px+1;
+			  pp_altColor[ppc_altColor].y=*py+1;
+			  ppc_altColor++;
 			}
-		      mindset_dot(*px,*py,altColor); 
+		      pp_altColor[ppc_altColor].x=*px;
+		      pp_altColor[ppc_altColor].y=*py;
 		    }
 		}
 
@@ -289,6 +388,9 @@ void screen_char_draw(padPt* Coord, unsigned char* ch, unsigned char count)
       Coord->x+=width;
       x+=width;
       y-=height;
+      mindset_gfx_blt_polypoint(0,ppc_altColor,altColor,0,0,&pp_altColor);
+      mindset_gfx_blt_polypoint(0,ppc_mainColor,mainColor,0,0,&pp_mainColor);
+      ppc_altColor=ppc_mainColor=0;
     }
 
   return;
@@ -333,64 +435,26 @@ void screen_tty_char(padByte theChar)
  */
 unsigned char screen_color(padRGB* theColor)
 {
+  unsigned short newTVRed=theColor->red >> 5;
+  unsigned short newTVGreen=(theColor->green >> 5) << 3;
+  unsigned short newTVBlue=(theColor->blue >> 5) << 6;
+
+  // TODO: Monitor colors.
+  
+  unsigned char i;
+
+  for (i=0;i<16;i++)
+    {
+      if (i>highest_color_index)
+	{
+	  palette[i]=newTVRed|newTVGreen|newTVBlue;
+	  highest_color_index++;
+	  return i;
+	}
+      else if (palette[i]==(newTVRed|newTVGreen|newTVBlue))
+	return i;
+    }
   return 0;
-/*   unsigned char newRed; */
-/*   unsigned char newGreen; */
-/*   unsigned char newBlue; */
-
-/*   newRed=(theColor->red*0.008); */
-/*   newGreen=(theColor->green*0.008); */
-/*   newBlue=(theColor->blue*0.008); */
-
-/*   if (is_mono==1) */
-/*     { */
-/*       if ((theColor->red==0) && (theColor->green==0) && (theColor->blue==0)) */
-/* 	{ */
-/* 	  return 0; */
-/* 	} */
-/*       else */
-/*         { */
-/* #ifdef SANYO_MBC550 */
-/* 	  return 2; // emulating CGA I guess... */
-/* #else */
-/* 	  return 1; */
-/* #endif */
-/* 	} */
-/*     } */
-/*   else */
-/*     { */
-/*       if ((newRed==0) && (newGreen==0) && (newBlue==0)) */
-/* 	return BLACK; */
-/*       else if ((newRed==1) && (newGreen==1) && (newBlue==1)) */
-/* 	return LIGHTGREY; */
-/*       else if ((newRed==0) && (newGreen==0) && (newBlue==1)) */
-/* 	return BLUE; */
-/*       else if ((newRed==0) && (newGreen==0) && (newBlue==2)) */
-/* 	return LIGHTBLUE; */
-/*       else if ((newRed==0) && (newGreen==1) && (newBlue==0)) */
-/* 	return GREEN; */
-/*       else if ((newRed==0) && (newGreen==2) && (newBlue==0)) */
-/* 	return LIGHTGREEN; */
-/*       else if ((newRed==0) && (newGreen==1) && (newBlue==1)) */
-/* 	return CYAN; */
-/*       else if ((newRed==0) && (newGreen==2) && (newBlue==2)) */
-/* 	return LIGHTCYAN; */
-/*       else if ((newRed==1) && (newGreen==0) && (newBlue==0)) */
-/* 	return RED; */
-/*       else if ((newRed==2) && (newGreen==0) && (newBlue==0)) */
-/* 	return LIGHTRED; */
-/*       else if ((newRed==1) && (newGreen==0) && (newBlue==1)) */
-/* 	return MAGENTA; */
-/*       else if ((newRed==2) && (newGreen==0) && (newBlue==2)) */
-/* 	return LIGHTMAGENTA; */
-/*       else if ((newRed==1) && (newGreen==1) && (newBlue==0)) */
-/* 	return BROWN; */
-/*       else if ((newRed==2) && (newGreen==2) && (newBlue==0)) */
-/* 	return YELLOW; */
-/*       else if ((newRed==2) && (newGreen==2) && (newBlue==2)) */
-/* 	return WHITE; */
-/*     } */
-/*   return WHITE; */
 }
 
 /**
@@ -398,7 +462,8 @@ unsigned char screen_color(padRGB* theColor)
  */
 void screen_foreground(padRGB* theColor)
 {
-  /* current_foreground=screen_color(theColor); */
+  current_foreground=screen_color(theColor);
+  screen_update_palette();
 }
 
 /**
@@ -406,7 +471,8 @@ void screen_foreground(padRGB* theColor)
  */
 void screen_background(padRGB* theColor)
 {
-  /* current_background=screen_color(theColor); */
+  current_background=screen_color(theColor);
+  screen_update_palette();
 }
 
 /**

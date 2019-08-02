@@ -10,7 +10,6 @@
 #include "keyboard.h"
 #include "screen.h"
 #include "terminal.h"
-#include "biosgfx.h"
 
 void keyboard_out(unsigned char platoKey)
 {

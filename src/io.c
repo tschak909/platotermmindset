@@ -22,20 +22,20 @@ void io_init(void)
 
   log("io_init() - About to set line characteristics.\r\n");
   // Set line characteristics. 
-  regs.h.al = 0x07; // 1200bps
+  regs.h.al = 0x04; // 1200bps
   regs.h.al = (regs.h.al << 5) | 0x03;   /* 8/N/1 */
   regs.x.dx = PORT;
   regs.h.ah = 0x00;
   int86(SERIAL,&regs,&regs);
   log("io_init() - Set line characteristics.\r\n");
 
-  log("io_init() - Set flow control\r\n");
-  /* // Set RTS/CTS Flow control */
-  regs.h.ah = 0x0f;
-  regs.h.al = 0x02;
-  regs.x.dx = PORT;
-  int86(SERIAL,&regs,&regs);
-  log("io_init() - Set flow control success\r\n");
+  /* log("io_init() - Set flow control\r\n"); */
+  /* /\* // Set RTS/CTS Flow control *\/ */
+  /* regs.h.ah = 0x0f; */
+  /* regs.h.al = 0x02; */
+  /* regs.x.dx = PORT; */
+  /* int86(SERIAL,&regs,&regs); */
+  /* log("io_init() - Set flow control success\r\n"); */
 
   io_raise_dtr();
 }
