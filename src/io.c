@@ -9,72 +9,83 @@
 #define SERIAL 0x14
 #define PORT 0
 
-union REGS regs;
+unsigned short* ibuf;
+unsigned short* obuf;
+
+#define IBUF_SIZE 8192
+#define OBUF_SIZE 128
+
+union REGPACK regs;
+union REGS iregs;
 
 void io_init(void)
 {
-  log("io_init() - before port initialize.\r\n");
+  ibuf=malloc(IBUF_SIZE*sizeof(unsigned short));
+  obuf=malloc(IBUF_SIZE*sizeof(unsigned short));
+  
   // Initialize port.
   regs.x.dx = PORT;
   regs.h.ah = 0x04;
-  int86(SERIAL, &regs, &regs);
-  log("io_init() - after port initialize, returned %d\r\n",regs.x.ax);
+  intr(SERIAL, &regs);
 
-  log("io_init() - About to set line characteristics.\r\n");
   // Set line characteristics. 
-  regs.h.al = 0x04; // 1200bps
+  regs.h.al = 0x07; // 9600bps
   regs.h.al = (regs.h.al << 5) | 0x03;   /* 8/N/1 */
   regs.x.dx = PORT;
   regs.h.ah = 0x00;
-  int86(SERIAL,&regs,&regs);
-  log("io_init() - Set line characteristics.\r\n");
+  intr(SERIAL,&regs);
 
-  /* log("io_init() - Set flow control\r\n"); */
-  /* /\* // Set RTS/CTS Flow control *\/ */
-  /* regs.h.ah = 0x0f; */
-  /* regs.h.al = 0x02; */
-  /* regs.x.dx = PORT; */
-  /* int86(SERIAL,&regs,&regs); */
-  /* log("io_init() - Set flow control success\r\n"); */
+  // Set input/output buffers
+  regs.h.ah=0x2C;
+  regs.w.cx=IBUF_SIZE;
+  regs.w.dx=0;
+  regs.w.es=FP_SEG(ibuf);
+  regs.w.bx=FP_OFF(ibuf);
+  intr(0xEE,&regs);
 
-  io_raise_dtr();
+  regs.h.ah=0x2D;
+  regs.w.cx=OBUF_SIZE;
+  regs.w.dx=0;
+  regs.w.es=FP_SEG(obuf);
+  regs.w.bx=FP_OFF(obuf);
+  intr(0xEE,&regs);
+  
+  // Set Interrupt driven mode
+  regs.h.ah=0x2E;
+  regs.h.al=0x3; // Set DTR/RTS to enabled.
+  regs.h.bl=0x3; // Enable both interrupts.
+  intr(0xEE,&regs);
+  
 }
 
 void io_send_byte(unsigned char b)
 {
-  log("io_send_byte(0x%02x,%c)\r\n",b,b);
   regs.x.dx = PORT;
   regs.h.al = b;
-  regs.h.ah = 0x01;
-  int86(SERIAL, &regs, &regs);
-  log("io_send_byte() end\r\n");
+  regs.h.ah = 0x28;
+  intr(0xEE, &regs);
 }
 
 void io_lower_dtr(void)
 {
-  log("io_lower_dtr()\r\n");
   /* // Lower DTR */
   regs.h.ah = 0x06;
   regs.h.al = 0x00;
   regs.x.dx = PORT;
-  int86(SERIAL,&regs,&regs);
-  log("io_lower_dtr() successful\r\n");
+  intr(SERIAL,&regs);
 }
 
 void io_raise_dtr(void)
 {
-  log("io_raise_dtr(void)\r\n");
   /* // Raise DTR */
   regs.h.ah = 0x06;
   regs.h.al = 0x01;
   regs.x.dx = PORT;
-  int86(SERIAL,&regs,&regs);
-  log("io_raise_dtr(void) successful\r\n");
+  intr(SERIAL,&regs);
 }
 
 void io_hang_up(void)
 {
-  log("io_hang_up(void)\r\n");
   io_lower_dtr();
   delay(500);
   io_raise_dtr();
@@ -84,18 +95,17 @@ void io_main(void)
 {
   unsigned char ch;
   // Get port status
-  regs.x.dx = PORT;
-  regs.h.al = 0;
-  regs.h.ah = 3;
-  int86(SERIAL, &regs, &regs);
+  iregs.x.dx = PORT;
+  iregs.h.ah = 0x2B;
+  int86(0xEE, &iregs, &iregs);
 
-  if ((regs.x.ax&0x100) !=0)
+  if (iregs.w.bx<IBUF_SIZE-1)
     {
       // Data is waiting, process it.
-      regs.x.dx = PORT;
-      regs.h.ah = 0x02;
-      int86(SERIAL, &regs, &regs);
-      ch=regs.x.ax&0x00ff;
+      iregs.x.dx = PORT;
+      iregs.h.ah = 0x29;
+      int86(0xEE, &iregs, &iregs);
+      ch=iregs.h.al;
       ShowPLATO(&ch,1);
     }
 }
@@ -103,9 +113,9 @@ void io_main(void)
 void io_done(void)
 {
   io_hang_up();
+
+  // FIXME: do we need to disable the interrupts?
+  free(ibuf);
+  free(obuf);
   
-  // Deinitialize driver.
-  regs.h.ah = 0x05;
-  regs.x.dx = PORT;
-  int86(SERIAL,&regs,&regs);
 }

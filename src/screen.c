@@ -127,7 +127,9 @@ void screen_update_palette(void)
 void screen_clear(void)
 {
   highest_color_index=1;
-  mindset_gfx_fill_dest_buffer(color_to_solid_fill_pattern[current_background]);
+  palette[0]=palette[current_background];
+  palette[1]=palette[current_foreground];
+  mindset_gfx_fill_dest_buffer(0x0000);
   screen_update_palette();
 }
 
