@@ -53,6 +53,7 @@ unsigned char fontm23[768];
 unsigned char is_mono=0;
 unsigned char highest_color_index;
 unsigned short palette[16];
+unsigned char maxcolors=16;
 
 /**
  * screen_init() - Set up the screen
@@ -70,6 +71,7 @@ void screen_init(void)
       fontptr=&fontptr_6;
       scalex=&scalex_320;
       scaley=&scaley_200;
+      maxcolors=16;
       break;
     case 4:
       width=640;
@@ -80,6 +82,7 @@ void screen_init(void)
       fontptr=&fontptr_6;
       scalex=&scalex_640;
       scaley=&scaley_200;
+      maxcolors=4;
       break;
     case 6:
       width=640;
@@ -89,7 +92,8 @@ void screen_init(void)
       font=&font_640x400;
       fontptr=&fontptr_12;
       scalex=&scalex_640;
-      scaley=&scaley_400;      
+      scaley=&scaley_400;
+      maxcolors=2;
       break;
     }
   mindset_gfx_set_mode(screen_mode);
@@ -168,6 +172,7 @@ void screen_dot_draw(padPt* Coord)
   params.x=scalex[Coord->x];
   params.y=scaley[Coord->y];
 
+  screen_pen_mode();
   mindset_gfx_blt_polypoint(0,0,current_foreground,0,0,&params);
 }
 
@@ -183,6 +188,7 @@ void screen_line_draw(padPt* Coord1, padPt* Coord2)
   params[1].x=scalex[Coord2->x];
   params[1].y=scaley[Coord2->y];
 
+  screen_pen_mode();
   mindset_gfx_blt_polyline(0,2,current_foreground,1,0,0,&params);
 }
 
@@ -449,9 +455,16 @@ unsigned char screen_color(padRGB* theColor)
     {
       if (i>highest_color_index)
 	{
-	  palette[i]=newTVRed|newTVGreen|newTVBlue;
-	  highest_color_index++;
-	  return i;
+	  if (highest_color_index<maxcolors)
+	    {
+	      palette[i]=newTVRed|newTVGreen|newTVBlue;
+	      highest_color_index++;
+	      return i;
+	    }
+	  else
+	    {
+	      return palette[maxcolors-1];
+	    }
 	}
       else if (palette[i]==(newTVRed|newTVGreen|newTVBlue))
 	return i;
@@ -477,11 +490,36 @@ void screen_background(padRGB* theColor)
   screen_update_palette();
 }
 
-/**
- * screen_paint - Paint screen scanline_fill
- */
-void _screen_paint(unsigned short x, unsigned short y)
+unsigned char GetPixel(unsigned short x, unsigned short y)
 {
+  union REGS regs;
+  regs.h.ah=0x0d;
+  regs.w.cx=x;
+  regs.w.dx=y;
+  int86(0x10,&regs,&regs);
+  return regs.h.al;
+}
+
+void Line(unsigned short x1, unsigned short y1, unsigned short x2, unsigned short y2, unsigned char c)
+{
+  union REGPACK regs;
+  unsigned short l[4];
+
+  l[0]=x1;
+  l[1]=y1;
+  l[2]=x2;
+  l[3]=y2;
+  
+  regs.h.ah=0x0d;
+  regs.h.al=1;
+  regs.w.cx=2;
+  regs.h.dh=c;
+  regs.h.dl=1;
+  regs.w.si=0;
+  regs.w.di=0;
+  regs.w.es=FP_SEG(l);
+  regs.w.bx=FP_OFF(l);
+  intr(0xEF,&regs);
 }
 
 /**
@@ -489,6 +527,64 @@ void _screen_paint(unsigned short x, unsigned short y)
  */
 void screen_paint(padPt* Coord)
 {
+  static unsigned short xStack[640];
+  static unsigned short yStack[400];
+  unsigned char stackentry = 1;
+  unsigned char spanAbove, spanBelow;
+  unsigned short x=scalex[Coord->x];
+  unsigned short y=scaley[Coord->y];
+  unsigned char oldColor = GetPixel(x,y);
+
+  if (oldColor == current_foreground)
+    return;
+
+  do
+    {
+      unsigned short startx;
+      while (x > 0 && GetPixel(x-1,y) == oldColor)
+        --x;
+
+      spanAbove = spanBelow = false;
+      startx=x;
+
+      while(GetPixel(x,y) == oldColor)
+        {
+          if (y < (199))
+            {
+              unsigned char belowColor = GetPixel(x, y+1);
+              if (!spanBelow  && belowColor == oldColor)
+                {
+                  xStack[stackentry]  = x;
+                  yStack[stackentry]  = y+1;
+                  ++stackentry;
+                  spanBelow = true;
+                }
+              else if (spanBelow && belowColor != oldColor)
+                spanBelow = false;
+            }
+
+          if (y > 0)
+            {
+              unsigned char aboveColor = GetPixel(x, y-1);
+              if (!spanAbove  && aboveColor == oldColor)
+                {
+                  xStack[stackentry]  = x;
+                  yStack[stackentry]  = y-1;
+                  ++stackentry;
+                  spanAbove = true;
+                }
+              else if (spanAbove && aboveColor != oldColor)
+                spanAbove = false;
+            }
+
+          ++x;
+        }
+      Line(startx,y,x-1,y,current_foreground);
+      --stackentry;
+      x = xStack[stackentry];
+      y = yStack[stackentry];
+    }
+  while (stackentry);
 }
 
 /**
