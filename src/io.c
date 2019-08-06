@@ -11,6 +11,7 @@
 
 unsigned short* ibuf;
 unsigned short* obuf;
+unsigned char rts; // RTS enabled/disabled?
 
 #define IBUF_SIZE 8192
 #define OBUF_SIZE 128
@@ -91,6 +92,15 @@ void io_hang_up(void)
   io_raise_dtr();
 }
 
+void io_rts(unsigned char t)
+{
+  regs.h.ah=0x2E;
+  regs.h.al=(t==1 ? 3 : 1);
+  regs.x.dx=PORT;
+  intr(0xEE,&regs);
+  rts=t;
+}
+
 void io_main(void)
 {
   unsigned char ch;
@@ -101,7 +111,14 @@ void io_main(void)
 
   if (iregs.w.bx<IBUF_SIZE-1)
     {
-      // Data is waiting, process it.
+      // Data is waiting
+
+      // Toggle RTS if our buffer is hitting a threshold.
+      if ((iregs.w.bx<128) && (rts==1))
+	io_rts(0);
+      else if ((iregs.w.bx>7168) && (rts==0))
+	io_rts(1);
+      
       iregs.x.dx = PORT;
       iregs.h.ah = 0x29;
       int86(0xEE, &iregs, &iregs);
