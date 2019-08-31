@@ -55,6 +55,12 @@ unsigned char highest_color_index;
 unsigned short palette[16];
 unsigned char maxcolors=16;
 
+/* Palette bits for Monitor RGBI colors */
+#define MONITOR_I 0x8000
+#define MONITOR_R 0x4000
+#define MONITOR_G 0x2000
+#define MONITOR_B 0x1000
+
 /**
  * screen_init() - Set up the screen
  */
@@ -111,10 +117,56 @@ void screen_beep(void)
  */
 void screen_pen_mode(void)
 {
+  unsigned char t;
   if (CurMode==ModeErase || CurMode==ModeInverse)
-    current_foreground=current_background;
+    {
+      t=current_foreground;
+      current_foreground=current_background;
+      current_background=t;
+    }
   else
-    current_foreground=current_foreground;
+    {
+      t=current_background;
+      current_foreground=current_foreground;
+      current_background=t;
+    }
+}
+
+/**
+ * Dump palette to screen
+ */
+void screen_dump_palette(void)
+{
+  CopyWordParams p[16];
+  int i;
+  
+  // Set color patterns for each palette entry.
+  p[0].pattern=0x0000;
+  p[1].pattern=0x1111;
+  p[2].pattern=0x2222;
+  p[3].pattern=0x3333;
+  p[4].pattern=0x4444;
+  p[5].pattern=0x5555;
+  p[6].pattern=0x6666;
+  p[7].pattern=0x7777;
+  p[8].pattern=0x8888;
+  p[9].pattern=0x9999;
+  p[10].pattern=0xAAAA;
+  p[11].pattern=0xBBBB;
+  p[12].pattern=0xCCCC;
+  p[13].pattern=0xDDDD;
+  p[14].pattern=0xEEEE;
+  p[15].pattern=0xFFFF;
+
+  for (i=0;i<16;i++)
+    {
+      p[i].x=i*8;
+      p[i].y=192;
+      p[i].width=8;
+      p[i].height=8;
+    }
+
+  mindset_gfx_blt_copy_word(0,16,0,0,&p);  
 }
 
 /**
@@ -123,6 +175,7 @@ void screen_pen_mode(void)
 void screen_update_palette(void)
 {
   mindset_gfx_set_palette(0,16,0,&palette);
+  screen_dump_palette();
 }
 
 /**
@@ -130,9 +183,21 @@ void screen_update_palette(void)
  */
 void screen_clear(void)
 {
-  highest_color_index=1;
+  highest_color_index=0;
   palette[0]=palette[current_background];
-  palette[1]=palette[current_foreground];
+
+  if (palette[0]!=palette[current_foreground])
+    {
+      palette[1]=palette[current_foreground];
+      highest_color_index++;
+    }
+
+  if ((palette[0]==0x0000) && (palette[1]==0x0000))
+    {
+      palette[0]=0x0000;
+      palette[1]=0xF1FF;
+    }
+  
   mindset_gfx_fill_dest_buffer(0x0000);
   screen_update_palette();
 }
@@ -439,6 +504,29 @@ void screen_tty_char(padByte theChar)
 }
 
 /**
+ * screen_monitor_color() - Quantize 8-bit RGB color component to RGBI color component.
+ * c = color component, b = bit mask to set.
+ *
+ * If color value is greater than 128, then intensity bit is set.
+ *
+ */
+unsigned short screen_monitor_color(unsigned char c, unsigned short b)
+{
+  unsigned short ret=0;
+
+  // Quantize color bit.
+  c>>=6; // (1 = 64, 2 = 128, we don't care about 192.)
+    
+  if (c>1)
+    ret|=0x8000; // Set intensity bit.
+
+  if (c>0)
+    ret|=b; // Set color bit.
+
+  return ret;
+}
+
+/**
  * screen_color - return closest match to requested color.
  */
 unsigned char screen_color(padRGB* theColor)
@@ -446,10 +534,10 @@ unsigned char screen_color(padRGB* theColor)
   unsigned short newTVRed=theColor->red >> 5;
   unsigned short newTVGreen=(theColor->green >> 5) << 3;
   unsigned short newTVBlue=(theColor->blue >> 5) << 6;
-
-  // TODO: Monitor colors.
-  
-  unsigned char i;
+  unsigned short newMonitorRed=screen_monitor_color(theColor->red, MONITOR_R);
+  unsigned short newMonitorGreen=screen_monitor_color(theColor->green, MONITOR_G);
+  unsigned short newMonitorBlue=screen_monitor_color(theColor->blue, MONITOR_B);
+  unsigned char i; 
 
   for (i=0;i<16;i++)
     {
@@ -457,7 +545,7 @@ unsigned char screen_color(padRGB* theColor)
 	{
 	  if (highest_color_index<maxcolors)
 	    {
-	      palette[i]=newTVRed|newTVGreen|newTVBlue;
+	      palette[i]=newMonitorRed|newMonitorGreen|newMonitorBlue|newTVRed|newTVGreen|newTVBlue;
 	      highest_color_index++;
 	      return i;
 	    }
@@ -466,7 +554,7 @@ unsigned char screen_color(padRGB* theColor)
 	      return palette[maxcolors-1];
 	    }
 	}
-      else if (palette[i]==(newTVRed|newTVGreen|newTVBlue))
+      else if (palette[i]==(newMonitorRed|newMonitorGreen|newMonitorBlue|newTVRed|newTVGreen|newTVBlue))
 	return i;
     }
   return 0;
