@@ -71,10 +71,10 @@ void screen_init(void)
     case 2:
       width=320;
       height=200;
-      FONT_SIZE_X=5;
-      FONT_SIZE_Y=6;
-      font=&font_320x200;
-      fontptr=&fontptr_6;
+      /* FONT_SIZE_X=5; */
+      /* FONT_SIZE_Y=6; */
+      /* font=&font_320x200; */
+      /* fontptr=&fontptr_6; */
       scalex=&scalex_320;
       scaley=&scaley_200;
       maxcolors=16;
@@ -82,10 +82,10 @@ void screen_init(void)
     case 4:
       width=640;
       height=200;
-      FONT_SIZE_X=8;
-      FONT_SIZE_Y=6;
-      font=&font_640x200;
-      fontptr=&fontptr_6;
+      /* FONT_SIZE_X=8; */
+      /* FONT_SIZE_Y=6; */
+      /* font=&font_640x200; */
+      /* fontptr=&fontptr_6; */
       scalex=&scalex_640;
       scaley=&scaley_200;
       maxcolors=4;
@@ -93,10 +93,10 @@ void screen_init(void)
     case 6:
       width=640;
       height=400;
-      FONT_SIZE_X=8;
-      FONT_SIZE_Y=12;
-      font=&font_640x400;
-      fontptr=&fontptr_12;
+      /* FONT_SIZE_X=8; */
+      /* FONT_SIZE_Y=12; */
+      /* font=&font_640x400; */
+      /* fontptr=&fontptr_12; */
       scalex=&scalex_640;
       scaley=&scaley_400;
       maxcolors=2;
@@ -262,211 +262,6 @@ void screen_line_draw(padPt* Coord1, padPt* Coord2)
  */
 void screen_char_draw(padPt* Coord, unsigned char* ch, unsigned char count)
 {
-  PolyPointParams pp_mainColor[192]; // max size of 8x12 font for 96 total points to blit max. x2 for bold.
-  unsigned char ppc_mainColor=0; // polypoint counter for above.
-  PolyPointParams pp_altColor[192];
-  unsigned char ppc_altColor=0;
-  short offset; /* due to negative offsets */
-  unsigned short x;      /* Current X and Y coordinates */
-  unsigned short y;
-  unsigned short* px;   /* Pointers to X and Y coordinates used for actual plotting */
-  unsigned short* py;
-  unsigned char i; /* current character counter */
-  unsigned char a; /* current character byte */
-  unsigned char j,k; /* loop counters */
-  char b; /* current character row bit signed */
-  unsigned char width=FONT_SIZE_X;
-  unsigned char height=FONT_SIZE_Y;
-  unsigned short deltaX=1;
-  unsigned short deltaY=1;
-  unsigned char mainColor=current_foreground;
-  unsigned char altColor=current_background;
-  unsigned char *p;
-  unsigned char* curfont;
-  
-  switch(CurMem)
-    {
-    case M0:
-      curfont=font;
-      offset=-32;
-      break;
-    case M1:
-      curfont=font;
-      offset=64;
-      break;
-    case M2:
-      curfont=fontm23;
-      offset=-32;
-      break;
-    case M3:
-      curfont=fontm23;
-      offset=32;      
-      break;
-    }
-
-  if (CurMode==ModeRewrite)
-    {
-      altColor=current_background;
-    }
-  else if (CurMode==ModeInverse)
-    {
-      altColor=current_foreground;
-    }
-  
-  if (CurMode==ModeErase || CurMode==ModeInverse)
-    mainColor=current_background;
-  else
-    mainColor=current_foreground;
-
-  current_foreground=mainColor;
-  
-  x=scalex[(Coord->x&0x1FF)];
-  y=scaley[(Coord->y)+14&0x1FF];
-  
-  if (FastText==padF)
-    {
-      goto chardraw_with_fries;
-    }
-
-  /* the diet chardraw routine - fast text output. */
-  
-  for (i=0;i<count;++i)
-    {
-      a=*ch;
-      ++ch;
-      a+=offset;
-      p=&curfont[fontptr[a]];
-      
-      for (j=0;j<FONT_SIZE_Y;++j)
-  	{
-  	  b=*p;
-	  
-  	  for (k=0;k<FONT_SIZE_X;++k)
-  	    {
-  	      if (b&0x80) /* check sign bit. */
-		{
-		  pp_mainColor[ppc_mainColor].x=x;
-		  pp_mainColor[ppc_mainColor].y=y;
-		  ppc_mainColor++;
-		}
-	      ++x;
-  	      b<<=1;
-  	    }
-
-	  ++y;
-	  x-=width;
-	  ++p;
-  	}
-
-      mindset_gfx_blt_polypoint(0,ppc_mainColor,mainColor,0,0,&pp_mainColor);
-      x+=width;
-      y-=height;
-      ppc_mainColor=0;
-    }
-
-  return;
-
- chardraw_with_fries:
-  if (Rotate)
-    {
-      deltaX=-abs(deltaX);
-      width=-abs(width);
-      px=&y;
-      py=&x;
-    }
-    else
-    {
-      px=&x;
-      py=&y;
-    }
-  
-  if (ModeBold)
-    {
-      deltaX = deltaY = 2;
-      width<<=1;
-      height<<=1;
-    }
-  
-  for (i=0;i<count;++i)
-    {
-      a=*ch;
-      ++ch;
-      a+=offset;
-      p=&curfont[fontptr[a]];
-      for (j=0;j<FONT_SIZE_Y;++j)
-  	{
-  	  b=*p;
-
-	  if (Rotate)
-	    {
-	      px=&y;
-	      py=&x;
-	    }
-	  else
-	    {
-	      px=&x;
-	      py=&y;
-	    }
-
-  	  for (k=0;k<FONT_SIZE_X;++k)
-  	    {
-  	      if (b&0x80) /* check sign bit. */
-		{
-		  if (ModeBold)
-		    {
-		      pp_mainColor[ppc_mainColor].x=*px+1;
-		      pp_mainColor[ppc_mainColor].y=*py;
-		      ppc_mainColor++;
-		      pp_mainColor[ppc_mainColor].x=*px;
-		      pp_mainColor[ppc_mainColor].y=*py+1;
-		      ppc_mainColor++;
-		      pp_mainColor[ppc_mainColor].x=*px+1;
-		      pp_mainColor[ppc_mainColor].y=*py+1;
-		      ppc_mainColor++;
-		    }
-		  pp_mainColor[ppc_mainColor].x=*px;
-		  pp_mainColor[ppc_mainColor].y=*py;
-		  ppc_mainColor++;
-		}
-	      else
-		{
-		  if (CurMode==ModeInverse || CurMode==ModeRewrite)
-		    {
-		      if (ModeBold)
-			{
-			  pp_altColor[ppc_altColor].x=*px+1;
-			  pp_altColor[ppc_altColor].y=*py;
-			  ppc_altColor++;
-			  pp_altColor[ppc_altColor].x=*px;
-			  pp_altColor[ppc_altColor].y=*py+1;
-			  ppc_altColor++;
-			  pp_altColor[ppc_altColor].x=*px+1;
-			  pp_altColor[ppc_altColor].y=*py+1;
-			  ppc_altColor++;
-			}
-		      pp_altColor[ppc_altColor].x=*px;
-		      pp_altColor[ppc_altColor].y=*py;
-		    }
-		}
-
-	      x += deltaX;
-  	      b<<=1;
-  	    }
-
-	  y+=deltaY;
-	  x-=width;
-	  ++p;
-  	}
-
-      Coord->x+=width;
-      x+=width;
-      y-=height;
-      mindset_gfx_blt_polypoint(0,ppc_altColor,altColor,0,0,&pp_altColor);
-      mindset_gfx_blt_polypoint(0,ppc_mainColor,mainColor,0,0,&pp_mainColor);
-      ppc_altColor=ppc_mainColor=0;
-    }
-
-  return;
 }
 
 /**
