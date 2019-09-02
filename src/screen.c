@@ -54,6 +54,10 @@ unsigned char is_mono=0;
 unsigned char highest_color_index;
 unsigned short palette[16];
 unsigned char maxcolors=16;
+Font f;
+unsigned short tp[5];
+unsigned char gch[64];
+
 
 /* Palette bits for Monitor RGBI colors */
 #define MONITOR_I 0x8000
@@ -103,7 +107,39 @@ void screen_init(void)
       break;
     }
   mindset_gfx_set_mode(screen_mode);
+  screen_set_font(screen_mode);
+  
 } 
+
+/**
+ * Screen set font pointer for BLT STRING calls
+ * depending on graphics mode.
+ */
+void screen_set_font(unsigned char mode)
+{
+  switch(mode)
+    {
+    case 2:
+      f.excess=0;
+      f.nominal_width=5;
+      f.nominal_height=6;
+      f.addr=MK_FP(FP_SEG(font_mode2),FP_OFF(font_mode2));
+      break;
+    case 4:
+      break;
+    case 6:
+      break;
+    default:
+      break;
+    }
+  
+  f.type=0;
+  f.first=0x00;
+  f.last=0xFF;
+  f.byte_width=640;
+  
+  mindset_gfx_set_font_pointer(&f);
+}
 
 /**
  * screen_beep(void) - Beep the terminal
@@ -262,6 +298,47 @@ void screen_line_draw(padPt* Coord1, padPt* Coord2)
  */
 void screen_char_draw(padPt* Coord, unsigned char* ch, unsigned char count)
 {
+  union REGPACK regs;
+  short i=0;
+  char offset;
+
+  switch(CurMode)
+    {
+    case M0:
+      offset=0;
+      break;
+    case M1:
+      offset=-96;
+      break;
+    case M2:
+      offset=-32;
+      break;
+    case M3:
+      offset=32;
+      break;
+    }
+  
+  tp[0]=scalex[Coord->x];
+  tp[1]=scaley[(Coord->y)+15];
+  tp[2]=count;
+  tp[3]=FP_OFF(gch);
+  tp[4]=FP_SEG(gch);
+
+  for (i=0;i<count;i++)
+    gch[i]=ch[i]+offset;
+  
+  // Do the text string call
+  regs.h.ah=0x21;
+  regs.h.al=1;
+  regs.h.ch=1;
+  regs.h.cl=0;
+  regs.h.dh=0;
+  regs.h.dl=0x11; // White text for now. color TBD.
+  regs.w.si=0;
+  regs.w.di=0;
+  regs.w.es=FP_SEG(tp);
+  regs.w.bx=FP_OFF(tp);
+  intr(0xEF,&regs);
 }
 
 /**

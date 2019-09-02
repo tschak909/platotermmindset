@@ -8,6 +8,13 @@
  */
 void screen_init(void);
 
+
+/**
+ * Screen set font pointer for BLT STRING calls
+ * depending on graphics mode.
+ */
+void screen_set_font(unsigned char mode);
+
 /**
  * screen_beep(void) - Beep the terminal
  */
