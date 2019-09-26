@@ -31,6 +31,27 @@ const unsigned short color_to_solid_fill_pattern[]=
    0xFFFF
   };
 
+/* Quickly get a mask value for desired font color */
+const unsigned char color_to_mask[]=
+  {
+   0x00,
+   0x11,
+   0x22,
+   0x33,
+   0x44,
+   0x55,
+   0x66,
+   0x77,
+   0x88,
+   0x99,
+   0xAA,
+   0xBB,
+   0xCC,
+   0xDD,
+   0xEE,
+   0xFF
+  };
+
 unsigned char CharWide=8;
 unsigned char CharHigh=16;
 unsigned char screen_mode;
@@ -53,6 +74,7 @@ unsigned char fontm23[768];
 unsigned char is_mono=0;
 unsigned char highest_color_index;
 unsigned short palette[16];
+padRGB palette_rgb[16];
 unsigned char maxcolors=16;
 Font f;
 unsigned short tp[5];
@@ -149,26 +171,6 @@ void screen_beep(void)
 }
 
 /**
- * screen_pen_mode() - Set pen mode
- */
-void screen_pen_mode(void)
-{
-  unsigned char t;
-  if (CurMode==ModeErase || CurMode==ModeInverse)
-    {
-      t=current_foreground;
-      current_foreground=current_background;
-      current_background=t;
-    }
-  else
-    {
-      t=current_background;
-      current_foreground=current_foreground;
-      current_background=t;
-    }
-}
-
-/**
  * Dump palette to screen
  */
 void screen_dump_palette(void)
@@ -210,8 +212,32 @@ void screen_dump_palette(void)
  */
 void screen_update_palette(void)
 {
+  unsigned char i=0;
+  
+  for (i=0;i<16;i++)
+    {
+      padRGB theColor=palette_rgb[i];
+      unsigned short newTVRed=theColor.red >> 5;
+      unsigned short newTVGreen=(theColor.green >> 5) << 3;
+      unsigned short newTVBlue=(theColor.blue >> 5) << 6;
+      unsigned short newMonitorRed=screen_monitor_color(theColor.red, MONITOR_R);
+      unsigned short newMonitorGreen=screen_monitor_color(theColor.green, MONITOR_G);
+      unsigned short newMonitorBlue=screen_monitor_color(theColor.blue, MONITOR_B);
+      palette[i]=newTVRed|newTVGreen|newTVBlue|newMonitorRed|newMonitorGreen|newMonitorBlue;
+    }
+  
   mindset_gfx_set_palette(0,16,0,&palette);
   screen_dump_palette();
+}
+
+/**
+ * Clear palette
+ */
+void screen_clear_palette(void)
+{
+  memset(&palette,0,sizeof(palette));
+  memset(&palette_rgb,0,sizeof(palette_rgb));
+  highest_color_index=0;
 }
 
 /**
@@ -219,20 +245,10 @@ void screen_update_palette(void)
  */
 void screen_clear(void)
 {
-  highest_color_index=0;
-  palette[0]=palette[current_background];
+  screen_clear_palette();
 
-  if (palette[0]!=palette[current_foreground])
-    {
-      palette[1]=palette[current_foreground];
-      highest_color_index++;
-    }
-
-  if ((palette[0]==0x0000) && (palette[1]==0x0000))
-    {
-      palette[0]=0x0000;
-      palette[1]=0xF1FF;
-    }
+  screen_background(&current_background_rgb);
+  screen_foreground(&current_foreground_rgb);
   
   mindset_gfx_fill_dest_buffer(0x0000);
   screen_update_palette();
@@ -246,15 +262,23 @@ void screen_wait(void)
 }
 
 /**
+ * Screen Pen color
+ */
+unsigned char screen_pen_color(void)
+{
+  if ((CurMode==ModeInverse)||(CurMode==ModeErase))
+    return current_background;
+  else
+    return current_foreground;
+}
+
+/**
  * screen_block_draw(Coord1, Coord2) - Perform a block fill from Coord1 to Coord2
  */
 void screen_block_draw(padPt* Coord1, padPt* Coord2)
 {
   CopyWordParams params;
-  
-  screen_pen_mode();
-
-  params.pattern=color_to_solid_fill_pattern[current_foreground];
+  params.pattern=color_to_solid_fill_pattern[screen_pen_color()];
   params.x=scalex[Coord1->x];
   params.y=scaley[Coord1->y];
   params.width=scalex[(Coord2->x)-(Coord1->x)];
@@ -273,8 +297,7 @@ void screen_dot_draw(padPt* Coord)
   params.x=scalex[Coord->x];
   params.y=scaley[Coord->y];
 
-  screen_pen_mode();
-  mindset_gfx_blt_polypoint(0,0,current_foreground,0,0,&params);
+  mindset_gfx_blt_polypoint(0,0,screen_pen_color(),0,0,&params);
 }
 
 /**
@@ -289,8 +312,7 @@ void screen_line_draw(padPt* Coord1, padPt* Coord2)
   params[1].x=scalex[Coord2->x];
   params[1].y=scaley[Coord2->y];
 
-  screen_pen_mode();
-  mindset_gfx_blt_polyline(0,2,current_foreground,1,0,0,&params);
+  mindset_gfx_blt_polyline(0,2,screen_pen_color(),1,0,0,&params);
 }
 
 /**
@@ -302,7 +324,7 @@ void screen_char_draw(padPt* Coord, unsigned char* ch, unsigned char count)
   short i=0;
   char offset;
 
-  switch(CurMode)
+  switch(CurMem)
     {
     case M0:
       offset=0;
@@ -319,11 +341,13 @@ void screen_char_draw(padPt* Coord, unsigned char* ch, unsigned char count)
     }
   
   tp[0]=scalex[Coord->x];
-  tp[1]=scaley[(Coord->y)+15];
+  tp[1]=scaley[(Coord->y)+14];
   tp[2]=count;
   tp[3]=FP_OFF(gch);
   tp[4]=FP_SEG(gch);
 
+  memcpy(&gch,&ch,count);
+  
   for (i=0;i<count;i++)
     gch[i]=ch[i]+offset;
   
@@ -333,7 +357,7 @@ void screen_char_draw(padPt* Coord, unsigned char* ch, unsigned char count)
   regs.h.ch=1;
   regs.h.cl=0;
   regs.h.dh=0;
-  regs.h.dl=0x11; // White text for now. color TBD.
+  regs.h.dl=color_to_mask[current_foreground]; // White text for now. color TBD.
   regs.w.si=0;
   regs.w.di=0;
   regs.w.es=FP_SEG(tp);
@@ -399,37 +423,38 @@ unsigned short screen_monitor_color(unsigned char c, unsigned short b)
 }
 
 /**
+ * screen_palette_color_matching - do both colors match?
+ */
+bool screen_palette_color_matching(padRGB* a, padRGB* b)
+{
+  return ((a->red==b->red) &&
+	  (a->green==b->green) &&
+	  (a->blue==b->blue));
+}
+
+/**
  * screen_color - return closest match to requested color.
  */
 unsigned char screen_color(padRGB* theColor)
 {
-  unsigned short newTVRed=theColor->red >> 5;
-  unsigned short newTVGreen=(theColor->green >> 5) << 3;
-  unsigned short newTVBlue=(theColor->blue >> 5) << 6;
-  unsigned short newMonitorRed=screen_monitor_color(theColor->red, MONITOR_R);
-  unsigned short newMonitorGreen=screen_monitor_color(theColor->green, MONITOR_G);
-  unsigned short newMonitorBlue=screen_monitor_color(theColor->blue, MONITOR_B);
-  unsigned char i; 
+  unsigned char i=0; 
 
-  for (i=0;i<16;i++)
+  do
     {
-      if (i>highest_color_index)
-	{
-	  if (highest_color_index<maxcolors)
-	    {
-	      palette[i]=newMonitorRed|newMonitorGreen|newMonitorBlue|newTVRed|newTVGreen|newTVBlue;
-	      highest_color_index++;
-	      return i;
-	    }
-	  else
-	    {
-	      return palette[maxcolors-1];
-	    }
-	}
-      else if (palette[i]==(newMonitorRed|newMonitorGreen|newMonitorBlue|newTVRed|newTVGreen|newTVBlue))
+      if (screen_palette_color_matching(&palette_rgb[i],theColor)==true)
 	return i;
-    }
-  return 0;
+      else
+	i++;
+    } while(i<highest_color_index);
+  
+  // TODO: max color clip
+  
+  // new color, compute it.
+  palette_rgb[highest_color_index].red=theColor->red;
+  palette_rgb[highest_color_index].green=theColor->green;
+  palette_rgb[highest_color_index].blue=theColor->blue;
+
+  return highest_color_index++;
 }
 
 /**
@@ -437,6 +462,9 @@ unsigned char screen_color(padRGB* theColor)
  */
 void screen_foreground(padRGB* theColor)
 {
+  current_foreground_rgb.red=theColor->red;
+  current_foreground_rgb.green=theColor->green;
+  current_foreground_rgb.blue=theColor->blue;
   current_foreground=screen_color(theColor);
   screen_update_palette();
 }
@@ -446,6 +474,9 @@ void screen_foreground(padRGB* theColor)
  */
 void screen_background(padRGB* theColor)
 {
+  current_background_rgb.red=theColor->red;
+  current_background_rgb.green=theColor->green;
+  current_background_rgb.blue=theColor->blue;
   current_background=screen_color(theColor);
   screen_update_palette();
 }

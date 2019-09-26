@@ -26,6 +26,11 @@ void screen_beep(void);
 void screen_clear(void);
 
 /**
+ * Screen Pen color
+ */
+unsigned char screen_pen_color(void);
+
+/**
  * screen_wait(void) - Sleep for approx 16.67ms
  */
 void screen_wait(void);
@@ -54,6 +59,20 @@ void screen_char_draw(padPt* Coord, unsigned char* ch, unsigned char count);
  * screen_tty_char - Called to plot chars when in tty mode
  */
 void screen_tty_char(padByte theChar);
+
+/**
+ * screen_color - return closest match to requested color.
+ */
+unsigned char screen_color(padRGB* theColor);
+
+/**
+ * screen_monitor_color() - Quantize 8-bit RGB color component to RGBI color component.
+ * c = color component, b = bit mask to set.
+ *
+ * If color value is greater than 128, then intensity bit is set.
+ *
+ */
+unsigned short screen_monitor_color(unsigned char c, unsigned short b);
 
 /**
  * screen_foreground - Called to set foreground color.
